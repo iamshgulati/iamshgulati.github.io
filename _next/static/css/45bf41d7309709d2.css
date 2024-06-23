@@ -1,0 +1,1 @@
+.floating-scroll-to-top-button_FloatingScrollToTopButtonContainer__GP0SZ{position:fixed;bottom:32px;right:16px;z-index:10;opacity:0;transform:translateY(110%);transition:opacity .5s ease,transform .5s ease}.floating-scroll-to-top-button_FloatingScrollToTopButtonContainer__GP0SZ[data-scrolled-state=true]{opacity:1;transform:translateY(0)}
