@@ -1,0 +1,158 @@
+---
+title: "2023 Website Refresh"
+description: "A satisfying year of updates."
+image: "https://images.unsplash.com/photo-1522542550221-31fd19575a2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&h=338&q=80"
+publishedAt: "2023-12-21"
+---
+
+Its time to reflect upon the work that has gone in making 2023 a satisfying year of updates for this website.
+
+## Content Management
+
+Last year, I started building my website using `contentlayer` to manage the mdx content. It was definitely great DX to manage content with full type safety. But, as of writing this, contentlayer is not maintained. And I was looking for tools that would be reliable and scalable. Then I found out that team behing Next.js has taken the opportunity to release `@next/mdx` which natively provides MDX support for Next.js.
+
+I was immediately interested in using it for my next website refresh. While the documentation around `@next/mdx` could be better, but I don't mind getting my hands dirty and discovering the nitty-gritty details. I am sure my design isn't the best out there, but I am still happy with the amout of functions I could achieve with just this one package. No `contentlayer`, or `remark-frontmatter`, or `gray-matter`, just some copy pastable javascript code and node.js. Next.js has an experimental flag `mdxRs` which enables rust compiler for mdx files. Only catch is, it doesn't support remark or rehype plugins. And now that I did not have remark or rehype plugins, I was able to enable the rust compiler to add cherry on the top.
+
+I am excited to share how I leveraged `@next/mdx` to eliminate these dependencies. Let's start by looking at some code. Feel free to copy to your own projects.
+
+### contentlayer
+
+The first and possibly the biggest of the dependencies that I removed.
+
+I use `getAllFrontmatter` helper to parse all mdx files and then leverage `@next/mdx`
+to read the frontmatter. I have seen some devs read mdx source and parse the frontmatter line-by-line. It works, but I prefer to take this approach.
+
+```ts
+import type { MDXModule } from "mdx/types";
+import glob from "glob";
+
+import type { Frontmatter } from "~/types/frontmatter";
+
+const ROOT_DIR = process.cwd();
+
+export const getAllFrontmatter = async (
+  dataDir: string,
+  contentDir = "",
+): Promise<Frontmatter[]> => {
+  const mdxFilePathPattern = `${ROOT_DIR}${dataDir}${contentDir}/**/*.mdx`;
+  const mdxFilePaths = glob.sync(mdxFilePathPattern);
+
+  // Resolve all frontmatter promises so we can perform filtering and sorting
+  let allFrontmatter: Frontmatter[] = await Promise.all(
+    mdxFilePaths.map(async (mdxFilePath) => {
+      const modulePath = mdxFilePath
+        .replace(`${ROOT_DIR}`, "")
+        .replace(`${dataDir}`, "")
+        .replace("/index.mdx", "");
+
+      const { metadata } = (await import(
+        `/public${modulePath}/index.mdx`
+      )) as MDXModule;
+
+      return {
+        ...(metadata as Frontmatter),
+        filePath: mdxFilePath.replace(`${ROOT_DIR}`, ""),
+        slug: mdxFilePath
+          .replace(`${ROOT_DIR}`, "")
+          .replace(`${dataDir}`, "")
+          .replace("/index.mdx", ""),
+        slugAsParams: mdxFilePath
+          .replace(`${ROOT_DIR}`, "")
+          .replace(`${dataDir}`, "")
+          .replace(`${contentDir}`, "")
+          .replace("/index.mdx", "")
+          .split("/")
+          .slice(1)
+          .join("/"),
+      } as Frontmatter;
+    }),
+  );
+
+  // Filter out items where any part of slug starts with '_'
+  // This behavior matches Next.js app dir where adding _ disables the route
+  allFrontmatter = allFrontmatter.filter(
+    (frontmatter: Frontmatter) =>
+      !frontmatter.slug.split("/").some((s) => s.startsWith("_")),
+  );
+
+  // Sort items by publishedAt in descending order
+  allFrontmatter = allFrontmatter.sort(
+    (a: Frontmatter, b: Frontmatter) =>
+      Number(new Date(b.publishedAt ?? new Date())) -
+      Number(new Date(a.publishedAt ?? new Date())),
+  );
+
+  return allFrontmatter;
+};
+```
+
+And `allRoutes` to use all frontmatter in the app, similar to how contentlayer provides.
+
+```ts
+import type { Frontmatter } from "~/types/frontmatter";
+import { getAllFrontmatter } from "./mdx";
+
+export type AppRoute = {
+  label: string;
+  pages: Frontmatter[];
+}
+
+export type AllRoutes = Record<
+  | "projects"
+  | "blog"
+  AppRoute
+>;
+
+export const allRoutes: AllRoutes = {
+  projects: {
+    label: "Projects",
+    pages: [
+      ...(await getAllFrontmatter({ contentDir: "/projects" })).map(
+        (page: Frontmatter) => {
+          page.icon = "CubeIcon";
+          return page;
+        },
+      ),
+    ],
+  },
+  blog: {
+    label: "Blog Posts",
+    pages: [
+      ...(await getAllFrontmatter({ contentDir: "/blog" })).map(
+        (page: Frontmatter) => {
+          page.icon = "FileTextIcon";
+          return page;
+        },
+      ),
+    ],
+  },
+};
+```
+
+My MDX files are not as clean as I would prefer them to be, but I am okay with the results for now.
+
+Instead of the markdown looking like this:
+
+```mdx
+---
+title: 2023 Website Refresh
+description: A satisfying year of updates.
+---
+
+Its time to reflect upon the work that has gone in making 2023 a satisfying year of
+updates for this website.
+```
+
+it looks more like this...
+
+```mdx
+export const metadata = {
+  title: "2023 Website Refresh",
+  description: "A satisfying year of updates.",
+};
+
+Its time to reflect upon the work that has gone in making 2023 a satisfying year of
+updates for this website.
+```
+
+to be continued...
